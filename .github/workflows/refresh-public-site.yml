@@ -1,0 +1,210 @@
+name: Refresh public ProDigital release
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/refresh-public-site.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Assemble and verify the public release
+        env:
+          SITE: https://prodigital-agency.github.io/
+        run: |
+          python3 - <<'PY'
+          from concurrent.futures import ThreadPoolExecutor
+          from hashlib import sha1
+          from pathlib import Path
+          from urllib.parse import quote
+          from urllib.request import urlopen
+          import os
+          import re
+          import time
+
+          # Git blob IDs from the approved source commit 6ad557e.
+          # Only files already served by the public website are fetched.
+          manifest = {
+              '404.html': '6f9c4bfa17b27f083e4b21f9abae0bced3b7e3fa',
+              'ai-diagnostika/app.js': '4074e08ebf8a83cb500d733347f8432e1e1702a0',
+              'ai-diagnostika/index.html': '6e9b0e205de86899191af77baeb06719ada74669',
+              'ai-diagnostika/model.js': 'e352018a0a359606e13c25df028423b92f83b58c',
+              'ai-diagnostika/style.css': 'e0843968a6aca9c199ce5627ce2cc2260dc962f6',
+              'assets/apple-touch-icon.png': '6998d74b84695fc1436672c3ae33139b4c864431',
+              'assets/banner-context-new.png': '6ed594ea3d78de32a88e2f061af1d10a70f68978',
+              'assets/banner-target-new.png': 'ea3c2ede6b1f96deb4e1be2e52c31d900ae01bef',
+              'assets/bg-ribbons.png': 'c198417e3827effa5f85c65c454559e1c7f7bed7',
+              'assets/bg-rings-2.png': '7ea89c51ea79f4ea9c48c4da6d09aa8cd0df0b1a',
+              'assets/bg-waves.png': '8e85b70b19b615b79532b8d0df38ef1d11266a21',
+              'assets/case-pages.js': 'f2173702d7c4010fed90ea1787b6e5f36f12d66f',
+              'assets/context-cover-photo-1.png': 'b526e2aef082eafcf719f768254403bf9ccd9df8',
+              'assets/context-cover-photo-10.png': 'e8afec83c3ebd847347d69abc0de54910e16ac46',
+              'assets/context-cover-photo-2.png': 'd8e6bb665c463887d199bc39cae0c2cbc358dfff',
+              'assets/context-cover-photo-3.png': 'f61b582e034c101bad6eae214c21bfc1e0fa3afb',
+              'assets/context-cover-photo-4.png': '5b2e51e38964aa0ffe9e10ddd0cd3907f6f6d5b2',
+              'assets/context-cover-photo-5.png': 'cdd02ea3040821532db835b2c7d02a3c22e55a2a',
+              'assets/context-cover-photo-6.png': 'b40793963c160e8e867d15debb4d419c401a82e8',
+              'assets/context-cover-photo-7.png': '25cf48a7828f013ab0efd8c4e693479734ee0fc8',
+              'assets/context-cover-photo-8.png': '08a7df3d62154bba29b208778eb55f767a0dc934',
+              'assets/context-cover-photo-9.png': '4c35a4d44164edb0190c0f97cbd902a0391f0d29',
+              'assets/favicon-32.png': '59e162ff56df9961f536190f241241e9d57db4b7',
+              'assets/favicon-512.png': 'f77b584638ade7e332d30cec42d958a667c6c3b5',
+              'assets/favicon-source.png': '941cef1b2ff0d77d1e999767340dad00558a5db1',
+              'assets/katerina-experience-photo.png': 'd99c4229481f28ebb7e7f337252fd82b4a5398b8',
+              'assets/katerina-hero-photo.png': '13525fdbabeb7954e4074854085b11abc1c2f31e',
+              'assets/prodigital-logo-wordmark.png': '160630976e1784a0f789e8896b3809c7d8e5fcdc',
+              'assets/site-address.js': '0bdeaab1e67ada5b544b86f6f44fd06cb177f2d3',
+              'assets/tgt-appliances.png': '03b6e99e2b8dbd5881c4f9fce0fa309134ef7f7e',
+              'assets/tgt-bali-kitas.png': 'cfd6ea27bfbb5ee8bd49848d9afc7938646e8831',
+              'assets/tgt-bali-school.png': '8a7cdee5376d11d4c4253ca3462bb84d6b33cda3',
+              'assets/tgt-dubai-driving.png': '674ff26add7bfa93122bf335d35c9156fcf39804',
+              'assets/tgt-dubai-kids.png': '0e94dc7222950f8f62f1f8b26f44a3ddf0777740',
+              'assets/tgt-dubai-realty.png': '309cb817c26aa8197ec71b0fab4648218e79f19e',
+              'assets/tgt-eco-fur.png': '72bfc035b49377b4d6e4dca21bc8ca5378e2baf2',
+              'assets/tgt-europe-vnzh.png': '416d081428c8ff4ee7f28c4ee501468c6fd84968',
+              'assets/tgt-medical.png': 'f31e114fea0cd93c71ff548770e40e65619fa5a6',
+              'assets/tgt-music.png': 'abe9302a4577c42c4142ea9627bb7a033d35bafa',
+              'assets/tgt-relocation.png': '942fc991dc09ec0feacee571277fb64aede075dd',
+              'career/app.js': '98be698a07a9a477960d1986a9b0a0385e390bad',
+              'career/index.html': 'ca632b177ef873c6f89df2f64c09c8530274ae0b',
+              'career/model.js': 'd33915a4c6cf3a6abe797233899e80dd3bc71d21',
+              'career/style.css': 'be5bed00e7f46284a4b752ac6c62ebe4c050247c',
+              'cases-context.html': '4d0731f38592ad5045b5cbd27ab9468915961f9a',
+              'cases-target.html': 'f2d051c070240b07996e9e5d2812959e28879ecf',
+              'claude-guide.html': 'db74907f0009a457bb4bb963d5fad3e69b3cf8c6',
+              'data/cases.json': 'b5bd6060809bbfe35ea6d1055f6b145701d85978',
+              'data/services.json': '89570855bac7fb8aa5194231a2c8078efd334e8b',
+              'data/site.json': '7eeb69953b852f9bca0742a07bd4eb126560edd8',
+              'data/taxonomy.json': '4e5667daa72137df5497b43d0af35e3516a78dd2',
+              'favicon.ico': 'a9f44414ccdd2360fd868766b2e25db6e8fe4798',
+              'index.html': '4580eb69c6775656d39d64f255b53ccf9f243ea9',
+              'keysy/arenda-vps-serverov-yandex-direkt/index.html': '33b4a7d1d76ffecd40f1da799958ceac868ebbbb',
+              'keysy/bankrotstvo-fizlic-yandex-direkt-cpl-minus-38/index.html': '2dad0d2f5f0121b58ec0f70259007c87ea04060a',
+              'keysy/bytovaya-tehnika-e-commerce-vk-ads/index.html': 'f3ace80dc61599e20fe895d30df4e45d82c58e43',
+              'keysy/carelux-sluhovye-apparaty-yandex-direkt/index.html': 'abf8416db6f8a634b9298bee019bf65fb3bb9c1a',
+              'keysy/coral-travel-yandex-direkt-turizm/index.html': '91202e2210bb30339d51148554d5f691ee6aa9bd',
+              'keysy/derevyannye-besedki-belarus-yandex-direkt/index.html': '158fcc45d2b19babcdf080b36f9b28fd16d82f84',
+              'keysy/detskiy-klub-dubai-target/index.html': '170030262407184e82ac82897c29fd0d614a3673',
+              'keysy/detskiy-sad-bali-target/index.html': '88a958a9799beaf25b5379122ab49b838c7a6277',
+              'keysy/eko-shuby-kazahstan-zayavki-instagram/index.html': '30240ee34a675aaf404acfdc74d6945196b90c70',
+              'keysy/evropa-market-dostavka-produktov-drr-2-68/index.html': '2a6195ac7ea0b1d692352813448ec2483ea728d1',
+              'keysy/index.html': '421f3665685fe04ead5462b05bb79c7653ba4b2c',
+              'keysy/opernaya-akademiya-italiya-zayavki-9-eur/index.html': '3a2b73555cff2392101abeb7abbf9d1a21e63e7d',
+              'keysy/podbor-psihologov-yandex-direkt-569-rub-lid/index.html': '0c213e47636e63bc8cd2309a3be39f3aac05c45c',
+              'keysy/premialnaya-kosmetika-yandex-direkt-roas/index.html': '6add96b20d9c47b8c3e8a8164d4c5b5c911d759e',
+              'keysy/proizvodstvo-elektroniki-b2b-yandex-direkt-drr/index.html': 'a0cf035e2d3099922e862fa1ebef9a8beb1c4cf9',
+              'keysy/tibetskaya-medicina-kazahstan-google-ads/index.html': 'bc0e22a0265dfac4c6adc901749bca98ad549169',
+              'keysy/vebinary-nmo-dlya-vrachey-registracii/index.html': '8ec03ae5706a1527dbe0c6870df4bf58fd7402af',
+              'keysy/viza-talantov-o1-ssha-meta-lidy/index.html': '2e7e2de62a77b47f407c7c2aceb4a578ca1b1bbf',
+              'keysy/vnzh-bali-kitas-meta-5-usd-lid/index.html': '7856201aafbd688ca03259836440b27ef9aaf8dd',
+              'keysy/vnzh-portugaliya-relokaciya-2-usd-lid/index.html': '4010d1a75c51cca5160867315d3b7c09926e6e11',
+              'keysy/voditelskie-prava-dubai-10-usd-lid/index.html': 'a922754405cedf3d80421fc04c198541e1b1a5b5',
+              'keysy/vykup-nedvizhimosti-dubai-lidy-meta/index.html': '4118e51c9c02c534f07b5af4b62068128b562e63',
+              'keysy/yuvelirnoe-proizvodstvo-moskva-yandex-direkt/index.html': '6631e2b4909c3823bc8849fa664fbf1fb86b1990',
+              'nishi/b2b-i-proizvodstvo/index.html': '72ab7bb93048cb79d5ed8710027e9892233e20de',
+              'nishi/deti-i-obrazovanie/index.html': '882414c13ce4b1e278750ad7c0f35c2abdc5d360',
+              'nishi/e-commerce/index.html': '757db596b2ca6e878deb41fd071d0eda3feca6e1',
+              'nishi/medicina/index.html': 'b6c816e8cb30f8eb46a612eacfc235cb9ce5615c',
+              'nishi/relokaciya/index.html': 'fd370425905643e1a0601036169b06b3561d9b06',
+              'robots.txt': 'c0c869e30885fe7805cba21115b4b0eae4a4a3c9',
+              'script.js': '25e6b91678331218ed59b55e81f6a4a2a8a7bbea',
+              'sitemap.xml': '03c3cbb95121c99929d20f94cb53a3b14c3c581d',
+              'strany/bali/index.html': '2d1786f18d470215f78e2dedd12a8d3bb542494c',
+              'strany/kazahstan/index.html': '0824f3337903623b118a4ea359055b8582599a62',
+              'strany/oae/index.html': 'ba3620e4201df8422693f16584657f0ffdbd8f54',
+              'strany/rossiya/index.html': 'd6a54e1854b5b4a959246ac9390e0cf4e39d78bc',
+              'style.css': 'a666c8c9a5d74ba15f979ec140de25ba8e7a91f1',
+              'uslugi/ai-avtomatizacii-i-agenty/index.html': '33d9d3b78bbdc225bb626002f72dcb83516a7494',
+          }
+          root = Path('/tmp/prodigital-public')
+          footer = re.compile(r'^[ \t]*<div>ИП Анисимова Катерина Андреевна</div>\r?\n[ \t]*<div>ИНН \d{12} · ОГРН \d{15}</div>\r?\n', re.MULTILINE)
+          operator = re.compile(r'<p><strong style="color:var\(--text\)">Оператор:</strong> ИП Анисимова Катерина Андреевна, ИНН \d{12}, ОГРН \d{15}\.</p>')
+          new_operator = '<p>Оператор персональных данных — <strong style="color:var(--text)">IE Katerina Anisimova</strong> (Tax ID 306521387).</p>'
+          old_details = re.compile(r'ИП\s+Анисимова|(?:ИНН|ОГРН(?:ИП)?)\s*\d{10,15}', re.IGNORECASE)
+
+          def materialize(entry):
+              path, expected = entry
+              url = os.environ['SITE'] + quote(path)
+              for attempt in range(3):
+                  try:
+                      with urlopen(url, timeout=45) as response:
+                          data = response.read()
+                      break
+                  except OSError:
+                      if attempt == 2:
+                          raise RuntimeError(f'Cannot download {path}') from None
+                      time.sleep(2)
+              if path.endswith('.html'):
+                  source = operator.sub(new_operator, footer.sub('', data.decode('utf-8')))
+                  if old_details.search(source):
+                      raise RuntimeError(f'Old business details in {path}')
+                  data = source.encode('utf-8')
+              actual = sha1(f'blob {len(data)}\0'.encode() + data).hexdigest()
+              if actual != expected:
+                  raise RuntimeError(f'Public file does not match approved source: {path}')
+              target = root / path
+              target.parent.mkdir(parents=True, exist_ok=True)
+              target.write_bytes(data)
+
+          with ThreadPoolExecutor(max_workers=6) as pool:
+              list(pool.map(materialize, manifest.items()))
+          (root / '.nojekyll').touch()
+          print(f'All {len(manifest)} files match the approved source.')
+          PY
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: /tmp/prodigital-public
+      - uses: actions/deploy-pages@v4
+        id: deployment
+      - name: Verify the published HTML
+        env:
+          SITE: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          python3 - <<'PY'
+          from concurrent.futures import ThreadPoolExecutor
+          from pathlib import Path
+          from urllib.parse import quote
+          from urllib.request import urlopen
+          import os
+          import time
+
+          root = Path('/tmp/prodigital-public')
+          site = os.environ['SITE'].rstrip('/') + '/'
+          pages = list(root.rglob('*.html'))
+
+          def verified(page, attempt):
+              route = page.relative_to(root).as_posix()
+              if route.endswith('index.html'):
+                  route = route[:-len('index.html')]
+              url = site + quote(route) + '?verify=' + os.environ['GITHUB_RUN_ID'] + '-' + str(attempt)
+              try:
+                  with urlopen(url, timeout=20) as response:
+                      return response.read() == page.read_bytes()
+              except OSError:
+                  return False
+
+          pending = pages
+          for attempt in range(5):
+              with ThreadPoolExecutor(max_workers=6) as pool:
+                  results = list(pool.map(lambda page: verified(page, attempt), pending))
+              pending = [page for page, valid in zip(pending, results) if not valid]
+              if not pending:
+                  print(f'Verified {len(pages)} HTML files on the live website.')
+                  break
+              if attempt < 4:
+                  time.sleep(12)
+          if pending:
+              raise SystemExit('Live content differs: ' + ', '.join(str(p.relative_to(root)) for p in pending))
+          PY
