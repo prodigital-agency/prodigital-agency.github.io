@@ -19,148 +19,36 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Assemble and verify the public release
+      - name: Assemble the approved public release
         env:
-          SITE: https://prodigital-agency.github.io/
+          RELEASE_ARCHIVE_URL: ${{ secrets.PRODIGITAL_RELEASE_ARCHIVE_URL }}
         run: |
           python3 - <<'PY'
-          from concurrent.futures import ThreadPoolExecutor
-          from hashlib import sha1
+          import hashlib,io,json,zipfile,os
           from pathlib import Path
-          from urllib.parse import quote
           from urllib.request import urlopen
-          import os
-          import re
-          import time
-
-          # Git blob IDs from the approved source commit 6ad557e.
-          # Only files already served by the public website are fetched.
-          manifest = {
-              '404.html': '6f9c4bfa17b27f083e4b21f9abae0bced3b7e3fa',
-              'ai-diagnostika/app.js': '4074e08ebf8a83cb500d733347f8432e1e1702a0',
-              'ai-diagnostika/index.html': '6e9b0e205de86899191af77baeb06719ada74669',
-              'ai-diagnostika/model.js': 'e352018a0a359606e13c25df028423b92f83b58c',
-              'ai-diagnostika/style.css': 'e0843968a6aca9c199ce5627ce2cc2260dc962f6',
-              'assets/apple-touch-icon.png': '6998d74b84695fc1436672c3ae33139b4c864431',
-              'assets/banner-context-new.png': '6ed594ea3d78de32a88e2f061af1d10a70f68978',
-              'assets/banner-target-new.png': 'ea3c2ede6b1f96deb4e1be2e52c31d900ae01bef',
-              'assets/bg-ribbons.png': 'c198417e3827effa5f85c65c454559e1c7f7bed7',
-              'assets/bg-rings-2.png': '7ea89c51ea79f4ea9c48c4da6d09aa8cd0df0b1a',
-              'assets/bg-waves.png': '8e85b70b19b615b79532b8d0df38ef1d11266a21',
-              'assets/case-pages.js': 'f2173702d7c4010fed90ea1787b6e5f36f12d66f',
-              'assets/context-cover-photo-1.png': 'b526e2aef082eafcf719f768254403bf9ccd9df8',
-              'assets/context-cover-photo-10.png': 'e8afec83c3ebd847347d69abc0de54910e16ac46',
-              'assets/context-cover-photo-2.png': 'd8e6bb665c463887d199bc39cae0c2cbc358dfff',
-              'assets/context-cover-photo-3.png': 'f61b582e034c101bad6eae214c21bfc1e0fa3afb',
-              'assets/context-cover-photo-4.png': '5b2e51e38964aa0ffe9e10ddd0cd3907f6f6d5b2',
-              'assets/context-cover-photo-5.png': 'cdd02ea3040821532db835b2c7d02a3c22e55a2a',
-              'assets/context-cover-photo-6.png': 'b40793963c160e8e867d15debb4d419c401a82e8',
-              'assets/context-cover-photo-7.png': '25cf48a7828f013ab0efd8c4e693479734ee0fc8',
-              'assets/context-cover-photo-8.png': '08a7df3d62154bba29b208778eb55f767a0dc934',
-              'assets/context-cover-photo-9.png': '4c35a4d44164edb0190c0f97cbd902a0391f0d29',
-              'assets/favicon-32.png': '59e162ff56df9961f536190f241241e9d57db4b7',
-              'assets/favicon-512.png': 'f77b584638ade7e332d30cec42d958a667c6c3b5',
-              'assets/favicon-source.png': '941cef1b2ff0d77d1e999767340dad00558a5db1',
-              'assets/katerina-experience-photo.png': 'd99c4229481f28ebb7e7f337252fd82b4a5398b8',
-              'assets/katerina-hero-photo.png': '13525fdbabeb7954e4074854085b11abc1c2f31e',
-              'assets/prodigital-logo-wordmark.png': '160630976e1784a0f789e8896b3809c7d8e5fcdc',
-              'assets/site-address.js': '0bdeaab1e67ada5b544b86f6f44fd06cb177f2d3',
-              'assets/tgt-appliances.png': '03b6e99e2b8dbd5881c4f9fce0fa309134ef7f7e',
-              'assets/tgt-bali-kitas.png': 'cfd6ea27bfbb5ee8bd49848d9afc7938646e8831',
-              'assets/tgt-bali-school.png': '8a7cdee5376d11d4c4253ca3462bb84d6b33cda3',
-              'assets/tgt-dubai-driving.png': '674ff26add7bfa93122bf335d35c9156fcf39804',
-              'assets/tgt-dubai-kids.png': '0e94dc7222950f8f62f1f8b26f44a3ddf0777740',
-              'assets/tgt-dubai-realty.png': '309cb817c26aa8197ec71b0fab4648218e79f19e',
-              'assets/tgt-eco-fur.png': '72bfc035b49377b4d6e4dca21bc8ca5378e2baf2',
-              'assets/tgt-europe-vnzh.png': '416d081428c8ff4ee7f28c4ee501468c6fd84968',
-              'assets/tgt-medical.png': 'f31e114fea0cd93c71ff548770e40e65619fa5a6',
-              'assets/tgt-music.png': 'abe9302a4577c42c4142ea9627bb7a033d35bafa',
-              'assets/tgt-relocation.png': '942fc991dc09ec0feacee571277fb64aede075dd',
-              'career/app.js': '98be698a07a9a477960d1986a9b0a0385e390bad',
-              'career/index.html': 'ca632b177ef873c6f89df2f64c09c8530274ae0b',
-              'career/model.js': 'd33915a4c6cf3a6abe797233899e80dd3bc71d21',
-              'career/style.css': 'be5bed00e7f46284a4b752ac6c62ebe4c050247c',
-              'cases-context.html': '4d0731f38592ad5045b5cbd27ab9468915961f9a',
-              'cases-target.html': 'f2d051c070240b07996e9e5d2812959e28879ecf',
-              'claude-guide.html': 'db74907f0009a457bb4bb963d5fad3e69b3cf8c6',
-              'data/cases.json': 'b5bd6060809bbfe35ea6d1055f6b145701d85978',
-              'data/services.json': '89570855bac7fb8aa5194231a2c8078efd334e8b',
-              'data/site.json': '7eeb69953b852f9bca0742a07bd4eb126560edd8',
-              'data/taxonomy.json': '4e5667daa72137df5497b43d0af35e3516a78dd2',
-              'favicon.ico': 'a9f44414ccdd2360fd868766b2e25db6e8fe4798',
-              'index.html': '4580eb69c6775656d39d64f255b53ccf9f243ea9',
-              'keysy/arenda-vps-serverov-yandex-direkt/index.html': '33b4a7d1d76ffecd40f1da799958ceac868ebbbb',
-              'keysy/bankrotstvo-fizlic-yandex-direkt-cpl-minus-38/index.html': '2dad0d2f5f0121b58ec0f70259007c87ea04060a',
-              'keysy/bytovaya-tehnika-e-commerce-vk-ads/index.html': 'f3ace80dc61599e20fe895d30df4e45d82c58e43',
-              'keysy/carelux-sluhovye-apparaty-yandex-direkt/index.html': 'abf8416db6f8a634b9298bee019bf65fb3bb9c1a',
-              'keysy/coral-travel-yandex-direkt-turizm/index.html': '91202e2210bb30339d51148554d5f691ee6aa9bd',
-              'keysy/derevyannye-besedki-belarus-yandex-direkt/index.html': '158fcc45d2b19babcdf080b36f9b28fd16d82f84',
-              'keysy/detskiy-klub-dubai-target/index.html': '170030262407184e82ac82897c29fd0d614a3673',
-              'keysy/detskiy-sad-bali-target/index.html': '88a958a9799beaf25b5379122ab49b838c7a6277',
-              'keysy/eko-shuby-kazahstan-zayavki-instagram/index.html': '30240ee34a675aaf404acfdc74d6945196b90c70',
-              'keysy/evropa-market-dostavka-produktov-drr-2-68/index.html': '2a6195ac7ea0b1d692352813448ec2483ea728d1',
-              'keysy/index.html': '421f3665685fe04ead5462b05bb79c7653ba4b2c',
-              'keysy/opernaya-akademiya-italiya-zayavki-9-eur/index.html': '3a2b73555cff2392101abeb7abbf9d1a21e63e7d',
-              'keysy/podbor-psihologov-yandex-direkt-569-rub-lid/index.html': '0c213e47636e63bc8cd2309a3be39f3aac05c45c',
-              'keysy/premialnaya-kosmetika-yandex-direkt-roas/index.html': '6add96b20d9c47b8c3e8a8164d4c5b5c911d759e',
-              'keysy/proizvodstvo-elektroniki-b2b-yandex-direkt-drr/index.html': 'a0cf035e2d3099922e862fa1ebef9a8beb1c4cf9',
-              'keysy/tibetskaya-medicina-kazahstan-google-ads/index.html': 'bc0e22a0265dfac4c6adc901749bca98ad549169',
-              'keysy/vebinary-nmo-dlya-vrachey-registracii/index.html': '8ec03ae5706a1527dbe0c6870df4bf58fd7402af',
-              'keysy/viza-talantov-o1-ssha-meta-lidy/index.html': '2e7e2de62a77b47f407c7c2aceb4a578ca1b1bbf',
-              'keysy/vnzh-bali-kitas-meta-5-usd-lid/index.html': '7856201aafbd688ca03259836440b27ef9aaf8dd',
-              'keysy/vnzh-portugaliya-relokaciya-2-usd-lid/index.html': '4010d1a75c51cca5160867315d3b7c09926e6e11',
-              'keysy/voditelskie-prava-dubai-10-usd-lid/index.html': 'a922754405cedf3d80421fc04c198541e1b1a5b5',
-              'keysy/vykup-nedvizhimosti-dubai-lidy-meta/index.html': '4118e51c9c02c534f07b5af4b62068128b562e63',
-              'keysy/yuvelirnoe-proizvodstvo-moskva-yandex-direkt/index.html': '6631e2b4909c3823bc8849fa664fbf1fb86b1990',
-              'nishi/b2b-i-proizvodstvo/index.html': '72ab7bb93048cb79d5ed8710027e9892233e20de',
-              'nishi/deti-i-obrazovanie/index.html': '882414c13ce4b1e278750ad7c0f35c2abdc5d360',
-              'nishi/e-commerce/index.html': '757db596b2ca6e878deb41fd071d0eda3feca6e1',
-              'nishi/medicina/index.html': 'b6c816e8cb30f8eb46a612eacfc235cb9ce5615c',
-              'nishi/relokaciya/index.html': 'fd370425905643e1a0601036169b06b3561d9b06',
-              'robots.txt': 'c0c869e30885fe7805cba21115b4b0eae4a4a3c9',
-              'script.js': '25e6b91678331218ed59b55e81f6a4a2a8a7bbea',
-              'sitemap.xml': '03c3cbb95121c99929d20f94cb53a3b14c3c581d',
-              'strany/bali/index.html': '2d1786f18d470215f78e2dedd12a8d3bb542494c',
-              'strany/kazahstan/index.html': '0824f3337903623b118a4ea359055b8582599a62',
-              'strany/oae/index.html': 'ba3620e4201df8422693f16584657f0ffdbd8f54',
-              'strany/rossiya/index.html': 'd6a54e1854b5b4a959246ac9390e0cf4e39d78bc',
-              'style.css': 'a666c8c9a5d74ba15f979ec140de25ba8e7a91f1',
-              'uslugi/ai-avtomatizacii-i-agenty/index.html': '33d9d3b78bbdc225bb626002f72dcb83516a7494',
-          }
+          archive_url = os.environ['RELEASE_ARCHIVE_URL']
+          expected = {"404.html":"a50a9148a3742c8a34fcd54f9a17fe2dd8888c80","ai-diagnostika/app.js":"4074e08ebf8a83cb500d733347f8432e1e1702a0","ai-diagnostika/index.html":"19cdf8c75f42f74466d7f31b2477310fa6d17859","ai-diagnostika/model.js":"e352018a0a359606e13c25df028423b92f83b58c","ai-diagnostika/style.css":"e0843968a6aca9c199ce5627ce2cc2260dc962f6","assets/apple-touch-icon.png":"6998d74b84695fc1436672c3ae33139b4c864431","assets/banner-context-new-1100.webp":"e7ae1c320c7c3c78b182c1a6f285a5ec8b5d9253","assets/banner-context-new-640.webp":"1764d61af0394967421f18fb7c0cbfd46613a055","assets/banner-context-new.png":"6ed594ea3d78de32a88e2f061af1d10a70f68978","assets/banner-target-new-1100.webp":"42d0629b0c4fd53f2fefc1f6ed75da39b4284d7d","assets/banner-target-new-640.webp":"b0d1bcd44db651557e9bf081780978f8925fc6b6","assets/banner-target-new.png":"ea3c2ede6b1f96deb4e1be2e52c31d900ae01bef","assets/bg-ribbons.png":"c198417e3827effa5f85c65c454559e1c7f7bed7","assets/bg-ribbons.webp":"d27584f3e08022f6fc956f82a7c15c5869a4d389","assets/bg-rings-2.png":"7ea89c51ea79f4ea9c48c4da6d09aa8cd0df0b1a","assets/bg-rings-2.webp":"f69474b6b644775e44b698489d3dcfecdc6330b2","assets/bg-waves.png":"8e85b70b19b615b79532b8d0df38ef1d11266a21","assets/bg-waves.webp":"e3b501d0280a87e36c40bef7f237ddb028d590e1","assets/case-catalog.css":"3314de9c255b1e840e1db75be8cfa241e9152738","assets/case-catalog.js":"dd5596b616519266cc61ebc8206d3ca4e03fd636","assets/case-pages.js":"f2173702d7c4010fed90ea1787b6e5f36f12d66f","assets/context-cover-photo-1-1100.webp":"a09bf7820083c4be62d4c04e4b55891bd451bb72","assets/context-cover-photo-1-640.webp":"f2ae23b0086d658ce9137345eacd67dc700e103c","assets/context-cover-photo-1.png":"b526e2aef082eafcf719f768254403bf9ccd9df8","assets/context-cover-photo-10-1100.webp":"34091eee27f884aacf0d4271cdbb7f864ae64c5d","assets/context-cover-photo-10-640.webp":"a8717bd15733bba52f1945d3dc7a9ab75a945397","assets/context-cover-photo-10.png":"e8afec83c3ebd847347d69abc0de54910e16ac46","assets/context-cover-photo-2-1100.webp":"5602d00184347a8ee18ea8ec6c95f51f43215097","assets/context-cover-photo-2-640.webp":"c85391b5ab4e4029f9966c9ba190eff2fe8c4323","assets/context-cover-photo-2.png":"d8e6bb665c463887d199bc39cae0c2cbc358dfff","assets/context-cover-photo-3-1100.webp":"cb614a7c4c54bb105ec3e2c2c2537e0c32c283e5","assets/context-cover-photo-3-640.webp":"374861226ee04489f2b128cdad0a08f18dd0004b","assets/context-cover-photo-3.png":"f61b582e034c101bad6eae214c21bfc1e0fa3afb","assets/context-cover-photo-4-1100.webp":"39ebfc231fd708ec75f8908257eb337d3989cb3a","assets/context-cover-photo-4-640.webp":"11c1acb4354adf9c5194ccd5270c7595acb20e3f","assets/context-cover-photo-4.png":"5b2e51e38964aa0ffe9e10ddd0cd3907f6f6d5b2","assets/context-cover-photo-5-1100.webp":"b122d86b636b0aa6cf2e6b32dc3c36b9d15643cb","assets/context-cover-photo-5-640.webp":"86d8dcb81fb45ae52cf74d6bea30a240337b099a","assets/context-cover-photo-5.png":"cdd02ea3040821532db835b2c7d02a3c22e55a2a","assets/context-cover-photo-6-1100.webp":"752241ad0168f9d4fab9b46c0de31272ec01b009","assets/context-cover-photo-6-640.webp":"9cd0e8e3da415fcfa0645dd9100b75874fc7f6ad","assets/context-cover-photo-6.png":"b40793963c160e8e867d15debb4d419c401a82e8","assets/context-cover-photo-7-1100.webp":"1762ebe9b1bc5aa180e9e396cf3009ac6447d954","assets/context-cover-photo-7-640.webp":"9bfb59edee174d7c08f807d4d84f9d627575fd16","assets/context-cover-photo-7.png":"25cf48a7828f013ab0efd8c4e693479734ee0fc8","assets/context-cover-photo-8-1100.webp":"6de57c79ff64923caeca120e21a49ae548047a88","assets/context-cover-photo-8-640.webp":"cf0965466b332a0e3d5aacfdcf88f4ae0390c6c8","assets/context-cover-photo-8.png":"08a7df3d62154bba29b208778eb55f767a0dc934","assets/context-cover-photo-9-1100.webp":"740aa64bcb025273400bcfb2af68454e5c1636ed","assets/context-cover-photo-9-640.webp":"477bffa85c3ac0709fda8ab79f879700c5a0ffac","assets/context-cover-photo-9.png":"4c35a4d44164edb0190c0f97cbd902a0391f0d29","assets/favicon-32.png":"59e162ff56df9961f536190f241241e9d57db4b7","assets/favicon-512.png":"f77b584638ade7e332d30cec42d958a667c6c3b5","assets/favicon-source.png":"941cef1b2ff0d77d1e999767340dad00558a5db1","assets/katerina-experience-photo-1100.webp":"cce53952295a54bdb15548009ee08c523a348804","assets/katerina-experience-photo-640.webp":"38f819e683fc1966b595145e687c7e22ac7593d2","assets/katerina-experience-photo.png":"d99c4229481f28ebb7e7f337252fd82b4a5398b8","assets/katerina-hero-photo-1100.webp":"266c29aef38d3e02c9d85416f2e9bbcdd0277de3","assets/katerina-hero-photo-640.webp":"22cbbac01c588ec57cca8898e9fd4d8cea7277fb","assets/katerina-hero-photo.png":"13525fdbabeb7954e4074854085b11abc1c2f31e","assets/prodigital-logo-wordmark.png":"160630976e1784a0f789e8896b3809c7d8e5fcdc","assets/prodigital-logo-wordmark.webp":"5a83b0fead093b7b5d329a914c1ebfb884059d91","assets/service-case.css":"c4bff949ef8895751f96e98d17f7dca36f399ea7","assets/service-cases/ai-proposal-flow.svg":"cc88c925727a769474010da0ae0fabee80d6e62d","assets/service-navigation.css":"a4a6786356a202842bdfd1ea5b1180a019d6e447","assets/service-navigation.js":"3f48c4b5ae25344f60f4cb6b3d306ad3582fb8ac","assets/site-address.js":"0bdeaab1e67ada5b544b86f6f44fd06cb177f2d3","assets/tgt-appliances-1100.webp":"5eec94adb7e478d90361977a7bf6fbe00e58c419","assets/tgt-appliances-640.webp":"304ea9ed90ad430572a0eba24ac341d70e590c05","assets/tgt-appliances.png":"03b6e99e2b8dbd5881c4f9fce0fa309134ef7f7e","assets/tgt-bali-kitas-1100.webp":"74c86810a3eb8698abb4fe1419e87d21fda16149","assets/tgt-bali-kitas-640.webp":"9a0d1710e4f14770805ab1b2add2e780062a7d37","assets/tgt-bali-kitas.png":"cfd6ea27bfbb5ee8bd49848d9afc7938646e8831","assets/tgt-bali-school-1100.webp":"fad05dfc05c2f86963dc64454b7219453dccb57b","assets/tgt-bali-school-640.webp":"b5baba3ab076e6a298469c92fdac42cc34bbef87","assets/tgt-bali-school.png":"8a7cdee5376d11d4c4253ca3462bb84d6b33cda3","assets/tgt-dubai-driving-1100.webp":"9ffd247ce759cb2aaf820a6ab732b3bdc52cb934","assets/tgt-dubai-driving-640.webp":"2dc391ce99b0860dcc481d29bb635e61fe411312","assets/tgt-dubai-driving.png":"674ff26add7bfa93122bf335d35c9156fcf39804","assets/tgt-dubai-kids-1100.webp":"512d25ec592fb4db8b7bff013ac16b05586d18dc","assets/tgt-dubai-kids-640.webp":"1ef58191791df61fbc224e185c9f157205eaa46f","assets/tgt-dubai-kids.png":"0e94dc7222950f8f62f1f8b26f44a3ddf0777740","assets/tgt-dubai-realty-1100.webp":"dae0c03e93855141590eed58f913e367bd1315cb","assets/tgt-dubai-realty-640.webp":"3c4f55e1356c9caba9eb520c81820309d48d1869","assets/tgt-dubai-realty.png":"309cb817c26aa8197ec71b0fab4648218e79f19e","assets/tgt-eco-fur-1100.webp":"58658efd8e2efd17ab3be2144ee2e15982dae93b","assets/tgt-eco-fur-640.webp":"82aa9cf8a8207fdf07eba20ee662ea1d83b415f1","assets/tgt-eco-fur.png":"72bfc035b49377b4d6e4dca21bc8ca5378e2baf2","assets/tgt-europe-vnzh-1100.webp":"daaee8acada6a86a7f8788b4c92d55c876ae74a6","assets/tgt-europe-vnzh-640.webp":"0f7262099afa5d3d2b3c31924a671de1f86afe32","assets/tgt-europe-vnzh.png":"416d081428c8ff4ee7f28c4ee501468c6fd84968","assets/tgt-medical-1100.webp":"e20359d5fddfa73ef070136f08df425182a9659f","assets/tgt-medical-640.webp":"42d1e85308d428bffb23149b9bc5b0c5e0057d23","assets/tgt-medical.png":"f31e114fea0cd93c71ff548770e40e65619fa5a6","assets/tgt-music-1100.webp":"fa6ff98eeb0eceaeb6f78d1a6ac14d26a6059448","assets/tgt-music-640.webp":"cdbd90cdd074e39dc71f026d2cfc07bac3287290","assets/tgt-music.png":"abe9302a4577c42c4142ea9627bb7a033d35bafa","assets/tgt-relocation-1100.webp":"7fa6de498e435f18b54ea56cadbc8815772ab2f2","assets/tgt-relocation-640.webp":"897257939f30e5240674877adffcff804877b1a6","assets/tgt-relocation.png":"942fc991dc09ec0feacee571277fb64aede075dd","assets/website-portfolio.css":"cb03682615e10d4928c9a4efaf2748d1fa70bc3d","assets/website-portfolio.js":"72c3db9bede6494aec4f8087d479b62b45093b32","assets/website-portfolio/aerotone-desktop.webp":"f90b6a99686d80a18ba90ee0115bd6127451562f","assets/website-portfolio/aerotone-mobile.webp":"d374a47f9a9f95f112c0a2a4f5d954c90c6094df","assets/website-portfolio/leaders-first-desktop.webp":"7d42f5ce72cd2c623caa9d297f6569a1b1a5af60","assets/website-portfolio/leaders-first-mobile.webp":"83540973534ace1396ed3d0922112525f09d2caf","assets/website-portfolio/o1-beauty-desktop.webp":"9b8a9da51bce932999cb806e1acf9002da7a6c35","assets/website-portfolio/o1-beauty-mobile.webp":"5eff72128650c25336d5f39288dd857ab51895a8","assets/website-portfolio/osimo-academy-desktop.webp":"0e020f5dc0881703ae1db3f1ea2ee82f45b79587","assets/website-portfolio/osimo-academy-mobile.webp":"46ec2704bd6e17555fd1d9058a6cf392aceb76c1","assets/website-portfolio/talent-press-desktop.webp":"a97a698d6cf02b23022f9c3fbb4710158a6402fd","assets/website-portfolio/talent-press-mobile.webp":"ec485d9bec1ec90a988683b71d61e9906224dc54","assets/website-portfolio/team-trip-kamchatka-desktop.webp":"bf43ef2ca379e5736c9b1dc6ec5a70bf0fe74d9d","assets/website-portfolio/team-trip-kamchatka-mobile.webp":"eebc05a1fd2dec6d246c0e420317fa0d12a9bc45","assets/website-portfolio/team-trip-teriberka-desktop.webp":"589023cf0e1a665fe305f0651ac6f74d09cd7b7b","assets/website-portfolio/team-trip-teriberka-mobile.webp":"7f847c42fb27c412b1ad3c384d113db7c5a673f0","assets/website-portfolio/unicorns-bali-desktop.webp":"910ab8044ac4c140f08e676573c1c74912dbe8ce","assets/website-portfolio/unicorns-bali-mobile.webp":"1844438e9845afafb2cd04bf8ea875adc911b8a6","career/app.js":"98be698a07a9a477960d1986a9b0a0385e390bad","career/index.html":"d105c797b091359930f81aa30c7f12d8478265ea","career/model.js":"d33915a4c6cf3a6abe797233899e80dd3bc71d21","career/style.css":"3be2428ad24ce41025c06f13d938b7416a356958","cases-context.html":"e25a703de33089df13d48a8caab0f153a689104d","cases-target.html":"7aa1af2bc88f7616e4d1f023f5ccab7bcd707360","claude-guide.html":"16891d3b9f6f99e0672fedc6957fb5ec3241c70c","data/cases.json":"e2db6722a544d9d19261b835f7ffdd430e26d773","data/services.json":"faaee669b172c9f1beb4b5d46d6aefe08e7366ea","data/site.json":"7eeb69953b852f9bca0742a07bd4eb126560edd8","data/taxonomy.json":"e6da4489116cc08641640a0c80a656c955fc4c29","data/websites.json":"39d346190fb4ee5bb0f49d4a3694754e72477a12","favicon.ico":"a9f44414ccdd2360fd868766b2e25db6e8fe4798","index.html":"5b593cdc19e2d67f5a2105346e306cdd814abc82","keysy/arenda-vps-serverov-yandex-direkt/index.html":"72483677e051963c602c51a16d00e4bdc7620d5b","keysy/bankrotstvo-fizlic-yandex-direkt-cpl-minus-38/index.html":"b62738a90d8724526235d3fc9a3d5fa1923fdf9b","keysy/bytovaya-tehnika-e-commerce-vk-ads/index.html":"c4f80678316aa8db4efca1b9d05d7adb06e1648a","keysy/carelux-sluhovye-apparaty-yandex-direkt/index.html":"63233e6203e8d8638137a488dfd1fdca1ee34f99","keysy/coral-travel-yandex-direkt-turizm/index.html":"9f33490cd2af3e7b392e72da77b7f8c3fca9af70","keysy/derevyannye-besedki-belarus-yandex-direkt/index.html":"d85e1156558d6170f13e6d5622eefcb77a71d264","keysy/detskiy-klub-dubai-target/index.html":"d6ae99540c56289ad112ea0f4621a82dce2f4bb3","keysy/detskiy-sad-bali-target/index.html":"bab06d5e3805eead9740687d18f416faf271f521","keysy/eko-shuby-kazahstan-zayavki-instagram/index.html":"4ffe910f8322d79706ff784f570b9379f863b9b5","keysy/evropa-market-dostavka-produktov-drr-2-68/index.html":"e6ffc7a41934912bdbc48b1437aa06c88a72d0fa","keysy/index.html":"51bdac584ee29b8899e63297e8052dc4c9400142","keysy/opernaya-akademiya-italiya-zayavki-9-eur/index.html":"8b067a3f99e03fe2f15df2fd92c52a39bff8a420","keysy/podbor-psihologov-yandex-direkt-569-rub-lid/index.html":"256a1d7d7af4d31a4d5e5c28a9540b45ca7d185d","keysy/premialnaya-kosmetika-yandex-direkt-roas/index.html":"01b7bd130462b42a916bea2fc177a880e0b39ce6","keysy/proizvodstvo-elektroniki-b2b-yandex-direkt-drr/index.html":"0f39378ddf819055f3548c12525ec7469d62f428","keysy/tibetskaya-medicina-kazahstan-google-ads/index.html":"a5416089f5b435712d70b9ddf9c379aff84663e0","keysy/vebinary-nmo-dlya-vrachey-registracii/index.html":"6f91338f5b2bcf15b9339af8f3912895680e8fe7","keysy/viza-talantov-o1-ssha-meta-lidy/index.html":"2116f65cca7faaa11b4bae05bf7b061fe279b07b","keysy/vnzh-bali-kitas-meta-5-usd-lid/index.html":"a911478ac1c284b29c11c4555e40affb42f99252","keysy/vnzh-portugaliya-relokaciya-2-usd-lid/index.html":"2fcf5a2a2f1268571c70eaa5744e768352b832ff","keysy/voditelskie-prava-dubai-10-usd-lid/index.html":"e4ea3f984de12ebeebb5aad478085f76a8b40dab","keysy/vykup-nedvizhimosti-dubai-lidy-meta/index.html":"65eb027ee920f4cd1827536df240870838db13da","keysy/yuvelirnoe-proizvodstvo-moskva-yandex-direkt/index.html":"7d69f7740d57a4de4bd15f17c384fd1c81c9401d","nishi/b2b-i-proizvodstvo/index.html":"5ac4f3ac672eb476a0503bc8c3779cc0d9d1fc22","nishi/deti-i-obrazovanie/index.html":"2bb4ca1dfb1fed4b690d9d29ea799cbc87b6f2ec","nishi/e-commerce/index.html":"ae8ea00956c16ee5e26aefaf92f2274cf1f0b3c8","nishi/medicina/index.html":"41f360be6f2548a5ad30d668a0b3cfc6e00a36f5","nishi/relokaciya/index.html":"942eb4a20efe5dafd686dd7db77671c8c2db82d1","robots.txt":"c0c869e30885fe7805cba21115b4b0eae4a4a3c9","script.js":"4769b1e72158d2e4a37e0c402d16c66a6cb4e4c3","sitemap.xml":"79bb66922ea551a5d62bb59ab834fb3346bad1f0","strany/bali/index.html":"8eee9f7163a0ad8ce2294b1689ae74a58e41c3d0","strany/kazahstan/index.html":"6f387d37d1d5eb2646416a5018c7326b6b7651a6","strany/oae/index.html":"da3cd4cb5aa7a656e55f8277059d4a63358d6853","strany/rossiya/index.html":"1c45c8309989c5dfca4a03d852e6310b40909ebc","style.css":"2bb2565dae51df0cdc2ea729e0b4456f46466b24","uslugi/ai-avtomatizacii-i-agenty/index.html":"d6eaeb9f5d72040fe51fb71a512b4ab6177b22b6","uslugi/razrabotka-saytov/index.html":"027f9d88331e7349b119fd2037d80b4b23ab5dcd"}
+          with urlopen(archive_url, timeout=120) as response:
+              package = response.read()
           root = Path('/tmp/prodigital-public')
-          footer = re.compile(r'^[ \t]*<div>ИП Анисимова Катерина Андреевна</div>\r?\n[ \t]*<div>ИНН \d{12} · ОГРН \d{15}</div>\r?\n', re.MULTILINE)
-          operator = re.compile(r'<p><strong style="color:var\(--text\)">Оператор:</strong> ИП Анисимова Катерина Андреевна, ИНН \d{12}, ОГРН \d{15}\.</p>')
-          new_operator = '<p>Оператор персональных данных — <strong style="color:var(--text)">IE Katerina Anisimova</strong> (Tax ID 306521387).</p>'
-          old_details = re.compile(r'ИП\s+Анисимова|(?:ИНН|ОГРН(?:ИП)?)\s*\d{10,15}', re.IGNORECASE)
-
-          def materialize(entry):
-              path, expected = entry
-              url = os.environ['SITE'] + quote(path)
-              for attempt in range(3):
-                  try:
-                      with urlopen(url, timeout=45) as response:
-                          data = response.read()
-                      break
-                  except OSError:
-                      if attempt == 2:
-                          raise RuntimeError(f'Cannot download {path}') from None
-                      time.sleep(2)
-              if path.endswith('.html'):
-                  source = operator.sub(new_operator, footer.sub('', data.decode('utf-8')))
-                  if old_details.search(source):
-                      raise RuntimeError(f'Old business details in {path}')
-                  data = source.encode('utf-8')
-              actual = sha1(f'blob {len(data)}\0'.encode() + data).hexdigest()
-              if actual != expected:
-                  raise RuntimeError(f'Public file does not match approved source: {path}')
-              target = root / path
-              target.parent.mkdir(parents=True, exist_ok=True)
-              target.write_bytes(data)
-
-          with ThreadPoolExecutor(max_workers=6) as pool:
-              list(pool.map(materialize, manifest.items()))
+          root.mkdir(exist_ok=True)
+          with zipfile.ZipFile(io.BytesIO(package)) as archive:
+              release = json.loads(archive.read('release.json'))
+              assert release['approved_commit'] == 'aea42ac8be9648caf24676ce8bd1fe696eea05b9'
+              assert release['files'] == expected, 'Release inventory differs from approved source'
+              assert set(archive.namelist()) == set(expected) | {'.nojekyll', 'release.json'}, 'Unexpected archive entries'
+              for path, expected_sha in expected.items():
+                  raw = archive.read(path)
+                  actual = hashlib.sha1(b'blob ' + str(len(raw)).encode() + b'\0' + raw).hexdigest()
+                  assert actual == expected_sha, 'File differs: ' + path
+                  target = root / path
+                  target.parent.mkdir(parents=True, exist_ok=True)
+                  target.write_bytes(raw)
+          release['main_commit'] = '03d90a2d6b29dd196dd81bddbff89af214457eb9'
+          (root / 'release.json').write_text(json.dumps(release, ensure_ascii=False, indent=2) + '\n')
           (root / '.nojekyll').touch()
-          print(f'All {len(manifest)} files match the approved source.')
+          print('Verified', len(expected), 'approved public files.')
           PY
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
@@ -168,43 +56,32 @@ jobs:
           path: /tmp/prodigital-public
       - uses: actions/deploy-pages@v4
         id: deployment
-      - name: Verify the published HTML
+      - name: Verify live pages
         env:
           SITE: ${{ steps.deployment.outputs.page_url }}
         run: |
           python3 - <<'PY'
           from concurrent.futures import ThreadPoolExecutor
           from pathlib import Path
-          from urllib.parse import quote
           from urllib.request import urlopen
-          import os
-          import time
-
+          import os,time
           root = Path('/tmp/prodigital-public')
           site = os.environ['SITE'].rstrip('/') + '/'
           pages = list(root.rglob('*.html'))
-
-          def verified(page, attempt):
+          def matches(page, attempt):
               route = page.relative_to(root).as_posix()
-              if route.endswith('index.html'):
-                  route = route[:-len('index.html')]
-              url = site + quote(route) + '?verify=' + os.environ['GITHUB_RUN_ID'] + '-' + str(attempt)
+              if route.endswith('index.html'): route = route[:-10]
               try:
-                  with urlopen(url, timeout=20) as response:
+                  with urlopen(site+route+'?release='+os.environ['GITHUB_RUN_ID']+'-'+str(attempt), timeout=20) as response:
                       return response.read() == page.read_bytes()
-              except OSError:
-                  return False
-
+              except OSError: return False
           pending = pages
           for attempt in range(5):
               with ThreadPoolExecutor(max_workers=6) as pool:
-                  results = list(pool.map(lambda page: verified(page, attempt), pending))
-              pending = [page for page, valid in zip(pending, results) if not valid]
-              if not pending:
-                  print(f'Verified {len(pages)} HTML files on the live website.')
-                  break
-              if attempt < 4:
-                  time.sleep(12)
-          if pending:
-              raise SystemExit('Live content differs: ' + ', '.join(str(p.relative_to(root)) for p in pending))
+                  valid = list(pool.map(lambda p: matches(p, attempt), pending))
+              pending = [p for p, ok in zip(pending, valid) if not ok]
+              if not pending: break
+              time.sleep(12)
+          assert not pending, [str(p.relative_to(root)) for p in pending]
+          print('Verified', len(pages), 'live HTML pages.')
           PY
