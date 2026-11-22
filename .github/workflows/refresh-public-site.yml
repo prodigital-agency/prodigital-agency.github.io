@@ -38,13 +38,13 @@ jobs:
           from urllib.parse import quote
           from urllib.request import Request, urlopen
 
-          encoded = Path('.github/releases/20261122-public-patch.b64').read_text().strip() + '\n'
-          assert sha256(encoded.encode('ascii')).hexdigest() == 'f5059c1d03b51ca29fadeecf09fd8232d1a51aed8b72e59c1713d71cfc1558c3', 'Release data checksum mismatch'
+          encoded = Path('.github/releases/20261122-home-cases-seo.b64').read_text().strip() + '\n'
+          assert sha256(encoded.encode('ascii')).hexdigest() == 'c8d6c05cc86de2c0ecf3b26eeeafe56c10cecbfe2ed9b57950762f402b20c1c9', 'Release data checksum mismatch'
           release = json.loads(gzip.decompress(base64.b64decode(encoded)))
           assert release['schema'] == 1
-          assert release['approved_commit'] == '299e581913bac5bff239d33f8b87b17b4e502b05'
+          assert release['approved_commit'] == 'a7e6e67dc5879aabd8b6981b4cc951077639d966'
           manifest = release['files']
-          assert len(manifest) == 172
+          assert len(manifest) == 173
           assert sum(p.endswith('.html') for p in manifest) == 41
           assert set(release['patch']).issubset(manifest)
           root = Path('/tmp/prodigital-public')
@@ -80,7 +80,7 @@ jobs:
           (root / '.nojekyll').touch()
           (root / 'release.json').write_text(json.dumps({
               'approved_commit': release['approved_commit'],
-              'main_commit': '1196fd120e613820935e2c0b9c1c4f17b357b588',
+              'main_commit': 'c3ba243bd6cba636d71c0a1d74b35cefe7a8a70c',
               'files': manifest
           }, ensure_ascii=False, indent=2) + '\n')
           print(f'All {len(manifest)} files match the approved source.')
@@ -91,7 +91,7 @@ jobs:
           path: /tmp/prodigital-public
       - uses: actions/deploy-pages@v4
         id: deployment
-      - name: Verify the published HTML
+      - name: Verify published pages and shared assets
         env:
           SITE: ${{ steps.deployment.outputs.page_url }}
         run: |
@@ -106,6 +106,7 @@ jobs:
           root = Path('/tmp/prodigital-public')
           site = os.environ['SITE'].rstrip('/') + '/'
           pages = list(root.rglob('*.html'))
+          assets = [root / path for path in ('style.css', 'script.js', 'assets/case-content.js', 'assets/case-catalog.css', 'assets/service-navigation.css', 'career/style.css')]
 
           def verified(page, attempt):
               route = page.relative_to(root).as_posix()
@@ -118,13 +119,13 @@ jobs:
               except OSError:
                   return False
 
-          pending = pages
+          pending = pages + assets
           for attempt in range(5):
               with ThreadPoolExecutor(max_workers=6) as pool:
                   results = list(pool.map(lambda page: verified(page, attempt), pending))
               pending = [page for page, valid in zip(pending, results) if not valid]
               if not pending:
-                  print(f'Verified {len(pages)} HTML files on the live website.')
+                  print(f'Verified {len(pages)} HTML pages and {len(assets)} shared assets on the live website.')
                   break
               if attempt < 4:
                   time.sleep(12)
