@@ -38,15 +38,15 @@ jobs:
           from urllib.parse import quote
           from urllib.request import Request, urlopen
 
-          encoded = Path('.github/releases/20261123-portfolio-cases.b64').read_text().strip() + '\n'
-          assert sha256(encoded.encode('ascii')).hexdigest() == '35a404cd568d6edae7e5a15f675d238cc42db3dc3f2a5aa6d815042129c353dc', 'Release data checksum mismatch'
+          encoded = Path('.github/releases/20261123-metrika-subdomains.b64').read_text().strip() + '\n'
+          assert sha256(encoded.encode('ascii')).hexdigest() == '84937356920562f758a88894ed66d9f9de9f0ec8313d3a0819a6ac1388dbe6e9', 'Release data checksum mismatch'
           release = json.loads(gzip.decompress(base64.b64decode(encoded)))
           assert release['schema'] == 1
-          assert release['approved_commit'] == 'b8ec4ddeafcc4952dda4715af114bae838e62404'
+          assert release['approved_commit'] == '5adcb4d654acb95ee1f10024e0caeb0abe3f9c0a'
           manifest = release['files']
           assert len(manifest) == 176
           assert sum(p.endswith('.html') for p in manifest) == 41
-          assert len(release['patch']) == 42 and set(release['patch']).issubset(manifest)
+          assert len(release['patch']) == 1 and set(release['patch']).issubset(manifest)
           root = Path('/tmp/prodigital-public')
           root.mkdir(parents=True, exist_ok=True)
           site = 'https://prodigital-agency.github.io/'
@@ -82,7 +82,7 @@ jobs:
           (root / '.nojekyll').touch()
           (root / 'release.json').write_text(json.dumps({
               'approved_commit': release['approved_commit'],
-              'main_commit': 'b8ec4ddeafcc4952dda4715af114bae838e62404',
+              'main_commit': '5adcb4d654acb95ee1f10024e0caeb0abe3f9c0a',
               'files': manifest
           }, ensure_ascii=False, indent=2) + '\n')
           print(f'All {len(manifest)} files match the approved source.')
