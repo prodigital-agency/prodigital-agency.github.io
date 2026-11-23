@@ -38,15 +38,15 @@ jobs:
           from urllib.parse import quote
           from urllib.request import Request, urlopen
 
-          encoded = Path('.github/releases/20261122-home-brief-filters.b64').read_text().strip() + '\n'
-          assert sha256(encoded.encode('ascii')).hexdigest() == 'aa914d6392b18c1bb965c57018ca1a8318f06394cfdbd4856da29b41a6c06e06', 'Release data checksum mismatch'
+          encoded = Path('.github/releases/20261123-metrika.b64').read_text().strip() + '\n'
+          assert sha256(encoded.encode('ascii')).hexdigest() == '5cfcfbb131364f42a3d8554b495a52ff93cf83a6b909b7f00f002c6d3576997b', 'Release data checksum mismatch'
           release = json.loads(gzip.decompress(base64.b64decode(encoded)))
           assert release['schema'] == 1
-          assert release['approved_commit'] == '1c7834e5816e1767c5b19fa024955f9cdbdb35da'
+          assert release['approved_commit'] == 'c2744fe8c5c34d9a05109615844282848bccb1de'
           manifest = release['files']
-          assert len(manifest) == 174
+          assert len(manifest) == 175
           assert sum(p.endswith('.html') for p in manifest) == 41
-          assert len(release['patch']) == 18 and set(release['patch']).issubset(manifest)
+          assert len(release['patch']) == 43 and set(release['patch']).issubset(manifest)
           root = Path('/tmp/prodigital-public')
           root.mkdir(parents=True, exist_ok=True)
           site = 'https://prodigital-agency.github.io/'
@@ -82,7 +82,7 @@ jobs:
           (root / '.nojekyll').touch()
           (root / 'release.json').write_text(json.dumps({
               'approved_commit': release['approved_commit'],
-              'main_commit': '7b9542f7c545370dd9359603e114006922248746',
+              'main_commit': '829fa26e181f54cd351de6f82f037f58b46cfe7a',
               'files': manifest
           }, ensure_ascii=False, indent=2) + '\n')
           print(f'All {len(manifest)} files match the approved source.')
@@ -108,7 +108,7 @@ jobs:
           root = Path('/tmp/prodigital-public')
           site = os.environ['SITE'].rstrip('/') + '/'
           pages = list(root.rglob('*.html'))
-          assets = [root / path for path in ('style.css', 'script.js', 'assets/case-content.js', 'assets/case-catalog.css', 'assets/case-catalog.js', 'assets/home-motion.js', 'data/cases.json', 'assets/service-navigation.css', 'career/style.css')]
+          assets = [root / path for path in ('style.css', 'script.js', 'assets/case-content.js', 'assets/case-catalog.css', 'assets/case-catalog.js', 'assets/home-motion.js', 'assets/metrika.js', 'data/cases.json', 'assets/service-navigation.css', 'career/style.css')]
 
           def verified(page, attempt):
               route = page.relative_to(root).as_posix()
