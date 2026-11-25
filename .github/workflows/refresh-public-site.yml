@@ -38,15 +38,15 @@ jobs:
           from urllib.parse import quote
           from urllib.request import Request, urlopen
 
-          encoded = Path('.github/releases/20261123-metrika-subdomains.b64').read_text().strip() + '\n'
-          assert sha256(encoded.encode('ascii')).hexdigest() == '84937356920562f758a88894ed66d9f9de9f0ec8313d3a0819a6ac1388dbe6e9', 'Release data checksum mismatch'
+          encoded = Path('.github/releases/20261125-chernomorets-portfolio.b64').read_text().strip() + '\n'
+          assert sha256(encoded.encode('ascii')).hexdigest() == '0897e3e34ba2cc8247f71a7e5f5659a3a65f9c9fbac8c00eaae5ce16d3f4c0c7', 'Release data checksum mismatch'
           release = json.loads(gzip.decompress(base64.b64decode(encoded)))
           assert release['schema'] == 1
-          assert release['approved_commit'] == '5adcb4d654acb95ee1f10024e0caeb0abe3f9c0a'
+          assert release['approved_commit'] == '38c52bfe8e1256e7641ae6e8a5123fbc2bc61afa'
           manifest = release['files']
-          assert len(manifest) == 176
+          assert len(manifest) == 178
           assert sum(p.endswith('.html') for p in manifest) == 41
-          assert len(release['patch']) == 1 and set(release['patch']).issubset(manifest)
+          assert set(release['patch']) == {'assets/website-portfolio/chernomorets-us-desktop.webp', 'assets/website-portfolio/chernomorets-us-mobile.webp', 'data/websites.json', 'uslugi/razrabotka-saytov/index.html'} and set(release['patch']).issubset(manifest)
           root = Path('/tmp/prodigital-public')
           root.mkdir(parents=True, exist_ok=True)
           site = 'https://prodigital-agency.github.io/'
@@ -82,7 +82,7 @@ jobs:
           (root / '.nojekyll').touch()
           (root / 'release.json').write_text(json.dumps({
               'approved_commit': release['approved_commit'],
-              'main_commit': '5adcb4d654acb95ee1f10024e0caeb0abe3f9c0a',
+              'main_commit': '38c52bfe8e1256e7641ae6e8a5123fbc2bc61afa',
               'files': manifest
           }, ensure_ascii=False, indent=2) + '\n')
           print(f'All {len(manifest)} files match the approved source.')
@@ -108,7 +108,7 @@ jobs:
           root = Path('/tmp/prodigital-public')
           site = os.environ['SITE'].rstrip('/') + '/'
           pages = list(root.rglob('*.html'))
-          assets = [root / path for path in ('style.css', 'script.js', 'assets/case-content.js', 'assets/case-catalog.css', 'assets/case-catalog.js', 'assets/home-motion.js', 'assets/metrika.js', 'assets/website-portfolio.css', 'assets/website-portfolio/hero-studio.webp', 'data/cases.json', 'assets/service-navigation.css', 'career/style.css')]
+          assets = [root / path for path in ('style.css', 'script.js', 'assets/case-content.js', 'assets/case-catalog.css', 'assets/case-catalog.js', 'assets/home-motion.js', 'assets/metrika.js', 'assets/website-portfolio.css', 'assets/website-portfolio/hero-studio.webp', 'assets/website-portfolio/chernomorets-us-desktop.webp', 'assets/website-portfolio/chernomorets-us-mobile.webp', 'data/websites.json', 'data/cases.json', 'assets/service-navigation.css', 'career/style.css')]
 
           def verified(page, attempt):
               route = page.relative_to(root).as_posix()
