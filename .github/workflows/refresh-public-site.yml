@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
   pages: write
   id-token: write
 
@@ -91,6 +92,19 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: /tmp/prodigital-public
+      - name: Wait for the Pages artifact to be indexed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for delay in 1 2 4 8 12; do
+            artifact_id=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" --jq '.artifacts[] | select(.name == "github-pages") | .id') || artifact_id=''
+            if [ -n "$artifact_id" ]; then
+              exit 0
+            fi
+            sleep "$delay"
+          done
+          echo '::error::The uploaded Pages artifact did not appear in the Actions API.'
+          exit 1
       - uses: actions/deploy-pages@v4
         id: deployment
       - name: Verify published pages and shared assets
